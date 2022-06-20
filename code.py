@@ -19,11 +19,11 @@ try:
 except ImportError:
     print("WiFi secrets are kept in secrets.py, please add them there!")
     raise
-    
+
 # constants
 font = bitmap_font.load_font('lib/5x7.bdf')
 char_width = 5
-char_height = 7  
+char_height = 7
 board_width = 64
 board_height = 32
 number_trains = 3
@@ -38,14 +38,14 @@ group = displayio.Group()
 def fetchData(network):
     metro_api = "https://api.wmata.com/StationPrediction.svc/json/GetPrediction/"
     station_name = "K01"
-    
+
     r = network.fetch_data(
         metro_api + station_name,
         headers={"api_key": secrets["api_key"]},
         json_path=([],)
     )
     return r.get('Trains')
-    
+
 # coordinate a line string with a color
 # (orange or silver)
 def get_line_color(line_string):
@@ -91,7 +91,7 @@ def displayHeader():
 
     return
 
-# load the template footer line 
+# load the template footer line
 def loadFooter():
     y = board_height - 1
     x = 1
@@ -200,18 +200,24 @@ def loadBody():
 
 # update the body data with arriving trains
 def updateBody(data, lines):
-    assert(len(data) == len(lines))
-    
+    #assert(len(data) == len(lines))
+    missing_trains = number_trains-len(data)
     max_destination_chars = 8
     max_time_chars = 3
 
     for index, t in enumerate(data):
-        assert(len(lines[index]) == 3)
-
-        lines[index][0].fill = get_line_color(t.get('Line'))
-        lines[index][1].text = t.get('Destination').split(' ')[0][:max_destination_chars]
-        lines[index][2].text = t.get('Min')[:max_time_chars]
-
+        if index > number_trains-1:
+            break
+        if len(lines[index]) == 3:
+            lines[index][0].fill = get_line_color(t.get('Line'))
+            lines[index][1].text = t.get('Destination').split(' ')[0][:max_destination_chars]
+            lines[index][2].text = t.get('Min')[:max_time_chars]
+    if missing_trains > 0:
+        for i in range(1,missing_trains+1):
+            if len(lines[-i]) == 3:
+                lines[-i][0].fill = 0x000000
+                lines[-i][1].text = ''
+                lines[-i][2].text = ''
     return
 
 # update the footer with arriving trains
@@ -269,9 +275,14 @@ lines = loadBody()
 footer_features = loadFooter()
 display.show(group)
 
-# update the data every 30 seconds
+# update the data every 15 seconds
+iteration_count = 0
 while True:
     try:
+        if iteration_count % 240 == 0:
+            #refresh wifi every hour-ish just in case we get in a weird error state
+            network.connect()
+        iteration_count += 1
         data = fetchData(network)
         display_data = data[:number_trains]
         updateBody(display_data, lines)
@@ -279,6 +290,7 @@ while True:
         display.show(group)
     except (ValueError, RuntimeError) as e:
         print("Failed to get data, retrying\n", e)
+        network.connect()
         continue
 
-    time.sleep(30)
+    time.sleep(15)
